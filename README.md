@@ -10,8 +10,7 @@ guarda-rios-api/
 ├── config.py        # Settings loaded from .env
 ├── influx.py        # InfluxDB client and write helper
 ├── auth.py          # Per-station API key authentication
-├── .env             # Secrets (never commit)
-├── .env.example     # Template
+├── .env             # Secrets
 └── requirements.txt
 ```
 
@@ -53,21 +52,17 @@ curl -X POST http://localhost:8000/ingest \
   -H "Content-Type: application/json" \
   -d '{
     "ph": 7.42,
-    "temperature": 18.3,
-    "do_mgl": 9.1,
-    "turbidity": 3.5,
-    "conductivity": 412.0,
-    "timestamp": "2026-03-21T10:00:00Z"
+    "temperature": 18.3
   }'
 ```
 
-`timestamp` is optional — the server uses the current UTC time if omitted.
+`timestamp` is optional — the server uses the current UTC time if omitted(recommended).
 
 ## InfluxDB Data Model
 
 - **Measurement**: `water_quality`
 - **Tags**: `station_id`
-- **Fields**: `ph`, `temperature`, `do_mgl`, `turbidity`, `conductivity` (optional)
+- **Fields**: `ph`, `temperature`, `turbidity`, `tds`
 
 ## Endpoints
 
