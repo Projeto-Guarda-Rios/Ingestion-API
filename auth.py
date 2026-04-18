@@ -1,10 +1,12 @@
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
+
 from config import settings
 
 api_key_header = APIKeyHeader(name="X-API-Key")
 
 _station_keys: dict[str, str] | None = None
+_known_ids: frozenset[str] | None = None
 
 
 def _get_keys() -> dict[str, str]:
@@ -19,3 +21,11 @@ def get_station_id(api_key: str = Security(api_key_header)) -> str:
     if not station:
         raise HTTPException(status_code=403, detail="Invalid API key")
     return station
+
+
+def known_station_ids() -> frozenset[str]:
+    """Station IDs the server will accept. Used to validate MQTT topics."""
+    global _known_ids
+    if _known_ids is None:
+        _known_ids = frozenset(_get_keys().values())
+    return _known_ids

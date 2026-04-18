@@ -4,4 +4,6 @@ influxdb-client==1.44.0
 pydantic==2.8.2
 pydantic-settings==2.4.0
 python-dotenv==1.0.1
+paho-mqtt==2.1.0
+cbor2==5.6.4
 requests
