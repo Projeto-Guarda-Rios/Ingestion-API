@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic_settings import BaseSettings
 
 
@@ -10,32 +8,52 @@ class Settings(BaseSettings):
     influx_org: str
     influx_bucket: str
 
-    # Station auth (shared by HTTP and MQTT paths)
-    station_keys: str  # raw "key1:station_001,key2:station_002"
+    # Station secrets keyed by station label, raw "key1:station_a,key2:station_b"
+    station_keys: str
 
-    # MQTT broker — primary ingestion path for NBIOT stations
-    mqtt_enabled: bool = True
-    mqtt_host: str = "localhost"
-    mqtt_port: int = 1883
-    mqtt_username: Optional[str] = None
-    mqtt_password: Optional[str] = None
-    mqtt_tls: bool = False
-    mqtt_tls_ca: Optional[str] = None
-    mqtt_client_id: str = "guarda-rios-ingest"
-    mqtt_topic_prefix: str = "stations"
-    mqtt_qos: int = 1
+    # UDP ingestion
+    udp_host: str = "0.0.0.0"
+    udp_port: int = 40416
+    udp_station_map: str | None = None  # raw "1:station_a,2:station_b"
+    udp_buffer_size: int = 65535
 
     class Config:
         env_file = ".env"
 
-    def get_station_keys(self) -> dict[str, str]:
-        """Parse 'key1:station_001,key2:station_002' into {api_key: station_id}."""
-        result: dict[str, str] = {}
+    def iter_station_pairs(self) -> list[tuple[str, str]]:
+        """Parse STATION_KEYS while preserving the configured order."""
+        result: list[tuple[str, str]] = []
         for pair in self.station_keys.split(","):
             pair = pair.strip()
             if ":" in pair:
-                key, station_id = pair.split(":", 1)
-                result[key.strip()] = station_id.strip()
+                key, station_label = pair.split(":", 1)
+                result.append((key.strip(), station_label.strip()))
+        return result
+
+    def get_station_keys(self) -> dict[str, str]:
+        """Parse STATION_KEYS into {api_key: station_label}."""
+        return {key: station_label for key, station_label in self.iter_station_pairs()}
+
+    def get_udp_station_map(self) -> dict[int, str]:
+        """
+        Parse UDP_STATION_MAP into {numeric_station_id: station_label}.
+
+        When UDP_STATION_MAP is unset, stations are assigned sequentially using the
+        order in STATION_KEYS: 1, 2, 3, ...
+        """
+        if not self.udp_station_map:
+            return {
+                index: station_label
+                for index, (_, station_label) in enumerate(self.iter_station_pairs(), start=1)
+            }
+
+        result: dict[int, str] = {}
+        for pair in self.udp_station_map.split(","):
+            pair = pair.strip()
+            if ":" not in pair:
+                continue
+            station_number_raw, station_label = pair.split(":", 1)
+            result[int(station_number_raw.strip())] = station_label.strip()
         return result
 
 

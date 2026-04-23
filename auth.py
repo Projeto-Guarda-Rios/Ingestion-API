@@ -1,12 +1,14 @@
-from fastapi import HTTPException, Security
-from fastapi.security import APIKeyHeader
+from __future__ import annotations
+
+import hashlib
+import hmac
 
 from config import settings
 
-api_key_header = APIKeyHeader(name="X-API-Key")
-
 _station_keys: dict[str, str] | None = None
 _known_ids: frozenset[str] | None = None
+_station_secrets: dict[str, tuple[bytes, ...]] | None = None
+_udp_station_map: dict[int, str] | None = None
 
 
 def _get_keys() -> dict[str, str]:
@@ -16,15 +18,50 @@ def _get_keys() -> dict[str, str]:
     return _station_keys
 
 
-def get_station_id(api_key: str = Security(api_key_header)) -> str:
-    station = _get_keys().get(api_key)
-    if not station:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-    return station
+def _candidate_secret_bytes(secret: str) -> tuple[bytes, ...]:
+    candidates: list[bytes] = [secret.encode("utf-8")]
+    compact = secret.strip()
+    if compact and len(compact) % 2 == 0:
+        try:
+            raw = bytes.fromhex(compact)
+        except ValueError:
+            raw = None
+        if raw and raw not in candidates:
+            candidates.append(raw)
+    return tuple(candidates)
+
+
+def _get_station_secrets() -> dict[str, tuple[bytes, ...]]:
+    global _station_secrets
+    if _station_secrets is None:
+        _station_secrets = {
+            station_label: _candidate_secret_bytes(secret)
+            for secret, station_label in settings.iter_station_pairs()
+        }
+    return _station_secrets
+
+
+def _get_udp_station_map() -> dict[int, str]:
+    global _udp_station_map
+    if _udp_station_map is None:
+        _udp_station_map = settings.get_udp_station_map()
+    return _udp_station_map
+
+
+def station_name_from_number(station_number: int) -> str | None:
+    return _get_udp_station_map().get(station_number)
+
+
+def verify_auth_tag(station_label: str, message: bytes, auth_tag: bytes) -> bool:
+    for secret in _get_station_secrets().get(station_label, ()):
+        digest = hmac.new(secret, message, hashlib.sha256).digest()[:16]
+        if hmac.compare_digest(digest, auth_tag):
+            return True
+    return False
 
 
 def known_station_ids() -> frozenset[str]:
-    """Station IDs the server will accept. Used to validate MQTT topics."""
+    """Station labels the server will accept."""
     global _known_ids
     if _known_ids is None:
         _known_ids = frozenset(_get_keys().values())

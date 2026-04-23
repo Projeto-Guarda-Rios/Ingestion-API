@@ -1,9 +1,8 @@
 """
 Protocol-agnostic ingestion pipeline.
 
-Both HTTP handlers (main.py) and the MQTT subscriber (mqtt_client.py) call
-into this module, so the rules for translating a reading into an InfluxDB
-point live in exactly one place.
+The UDP listener calls into this module so the rules for translating a
+reading into an InfluxDB point live in exactly one place.
 """
 
 from __future__ import annotations
@@ -14,8 +13,8 @@ from typing import Iterable
 
 from influxdb_client import Point
 
-from influx import write_point, write_points
-from models import BatchReading, WaterReading
+from influx import write_points
+from models import BatchReading
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ def _ensure_utc(ts: datetime) -> datetime:
 
 def _build_point(
     station_id: str,
-    reading: BatchReading | WaterReading,
+    reading: BatchReading,
     default_ts: datetime,
 ) -> Point:
     ts = _ensure_utc(reading.timestamp or default_ts)
@@ -43,15 +42,6 @@ def _build_point(
     if reading.tds is not None:
         point.field("tds", float(reading.tds))
     return point
-
-
-def record_reading(station_id: str, reading: WaterReading) -> datetime:
-    """Persist a single reading. Returns the effective timestamp."""
-    now = datetime.now(timezone.utc)
-    ts = _ensure_utc(reading.timestamp or now)
-    write_point(_build_point(station_id, reading, now))
-    logger.info("ingest single station=%s ts=%s", station_id, ts.isoformat())
-    return ts
 
 
 def record_batch(station_id: str, readings: Iterable[BatchReading]) -> int:
